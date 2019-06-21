@@ -19,6 +19,7 @@ using namespace stk;
 BeeThree *voices[NUMVOICES];
 int active[NUMVOICES];
 mapper_device dev;
+mapper_signal freq, gain, fbgain, lfo_speed, lfo_depth;
 int done = 0;
 
 void print_active_instances()
@@ -38,16 +39,26 @@ void print_active_instances()
     printf("\n");
 }
 
-void freq_handler(mapper_signal sig, mapper_db_signal props,
-                  int instance_id, void *value, int count,
-                  mapper_timetag_t *tt)
+void release_instance(mapper_id instance, mapper_timetag_t *tt)
+{
+    voices[instance]->noteOff(1);
+    mapper_signal_instance_release(freq, instance, *tt);
+    mapper_signal_instance_release(gain, instance, *tt);
+    mapper_signal_instance_release(fbgain, instance, *tt);
+    mapper_signal_instance_release(lfo_speed, instance, *tt);
+    mapper_signal_instance_release(lfo_depth, instance, *tt);
+    active[instance] = 0;
+}
+
+void freq_handler(mapper_signal sig, mapper_id instance, const void *value,
+                  int count, mapper_timetag_t *tt)
 {
 	if (value) {
         StkFloat f = *((float *)value);
         // need to check if voice is already active
-        if (active[instance_id] == 0) {
-            voices[instance_id]->noteOn(f, 1);
-            active[instance_id] = 1;
+        if (active[instance] == 0) {
+            voices[instance]->noteOn(f, 1);
+            active[instance] = 1;
             print_active_instances();
         }
         else {
@@ -55,66 +66,56 @@ void freq_handler(mapper_signal sig, mapper_db_signal props,
         }
     }
     else {
-		voices[instance_id]->noteOff(1);
-        msig_release_instance(sig, instance_id, *tt);
-        active[instance_id] = 0;
-        print_active_instances();
+        release_instance(instance, tt);
     }
 }
 
-void feedback_gain_handler(mapper_signal sig, mapper_db_signal props,
-                           int instance_id, void *value, int count,
-                           mapper_timetag_t *tt)
+void feedback_gain_handler(mapper_signal sig, mapper_id instance,
+                           const void *value, int count, mapper_timetag_t *tt)
 {
     if (value) {
         StkFloat f = *((float *)value);
-        voices[instance_id]->controlChange(2, f);
+        voices[instance]->controlChange(2, f);
     }
     else {
         // release note also?
-        msig_release_instance(sig, instance_id, *tt);
+        release_instance(instance, tt);
     }
 }
 
-void gain_handler(mapper_signal sig, mapper_db_signal props,
-                  int instance_id, void *value, int count,
-                  mapper_timetag_t *tt)
+void gain_handler(mapper_signal sig, mapper_id instance, const void *value,
+                  int count, mapper_timetag_t *tt)
 {
     if (value) {
         StkFloat f = *((float *)value);
-        voices[instance_id]->controlChange(4, f);
+        voices[instance]->controlChange(4, f);
     }
     else {
-        // release note also?
-        msig_release_instance(sig, instance_id, *tt);
+        release_instance(instance, tt);
     }
 }
 
-void LFO_speed_handler(mapper_signal sig, mapper_db_signal props,
-                       int instance_id, void *value, int count,
-                       mapper_timetag_t *tt)
+void LFO_speed_handler(mapper_signal sig, mapper_id instance, const void *value,
+                       int count, mapper_timetag_t *tt)
 {
     if (value) {
         StkFloat f = *((float *)value);
-        voices[instance_id]->controlChange(11, f);
+        voices[instance]->controlChange(11, f);
     }
     else {
-        // release note also?
-        msig_release_instance(sig, instance_id, *tt);
+        release_instance(instance, tt);
     }
 }
 
-void LFO_depth_handler(mapper_signal sig, mapper_db_signal props,
-                       int instance_id, void *value, int count,
-                       mapper_timetag_t *tt)
+void LFO_depth_handler(mapper_signal sig, mapper_id instance, const void *value,
+                       int count, mapper_timetag_t *tt)
 {
     if (value) {
         StkFloat f = *((float *)value);
-        voices[instance_id]->controlChange(1, f);
+        voices[instance]->controlChange(1, f);
     }
     else {
-        // release note also?
-        msig_release_instance(sig, instance_id, *tt);
+        release_instance(instance, tt);
     }
 }
 
@@ -126,28 +127,34 @@ int setup_mapper()
     float mn = 0.0;
     float mx = 20000.0;
 
-    dev = mdev_new("BeeThree", 0, 0);
+    dev = mapper_device_new("BeeThree", 0, 0);
     if (!dev) goto error;
     printf("BeeThree device created.\n");
 
-    sig = mdev_add_input(dev, "/frequency", 1, 'f', "Hz", &mn, &mx, freq_handler, voices);
-    msig_reserve_instances(sig, NUMVOICES-1);
-   // msig_set_instance_allocation_mode(sig, IN_STEAL_OLDEST);
+    freq = mapper_device_add_signal(dev, MAPPER_DIR_INCOMING, NUMVOICES,
+                                    "/frequency", 1, 'f', "Hz",
+                                    &mn, &mx, freq_handler, voices);
+    mapper_signal_set_instance_stealing_mode(freq, MAPPER_STEAL_OLDEST);
 
     mx = 1.0;
-    sig = mdev_add_input(dev, "/feedback_gain", 1, 'f', 0, &mn, &mx, feedback_gain_handler, voices);
-    msig_reserve_instances(sig, NUMVOICES-1);
+    fbgain = mapper_device_add_signal(dev, MAPPER_DIR_INCOMING, NUMVOICES,
+                                      "/feedback_gain", 1, 'f', 0,
+                                      &mn, &mx, feedback_gain_handler, voices);
 
-    sig = mdev_add_input(dev, "/gain", 1, 'f', 0, &mn, &mx, gain_handler, voices);
-    msig_reserve_instances(sig, NUMVOICES-1);
+    gain = mapper_device_add_signal(dev, MAPPER_DIR_INCOMING, NUMVOICES,
+                                    "/gain", 1, 'f', 0,
+                                    &mn, &mx, gain_handler, voices);
 
-    sig = mdev_add_input(dev, "/LFO/speed", 1, 'f', "Hz", &mn, 0, LFO_speed_handler, voices);
-    msig_reserve_instances(sig, NUMVOICES-1);
+    lfo_speed = mapper_device_add_signal(dev, MAPPER_DIR_INCOMING, NUMVOICES,
+                                         "/LFO/speed", 1, 'f', "Hz",
+                                         &mn, 0, LFO_speed_handler, voices);
 
-    sig = mdev_add_input(dev, "/LFO/depth", 1, 'f', 0, &mn, &mx, LFO_depth_handler, voices);
-    msig_reserve_instances(sig, NUMVOICES-1);
+    lfo_depth = mapper_device_add_signal(dev, MAPPER_DIR_INCOMING, NUMVOICES,
+                                         "/LFO/depth", 1, 'f', 0,
+                                         &mn, &mx, LFO_depth_handler, voices);
 
-    printf("Number of inputs: %d\n", mdev_num_inputs(dev));
+    printf("Number of inputs: %d\n",
+           mapper_device_num_signals(dev, MAPPER_DIR_INCOMING));
     return 0;
 
   error:
@@ -159,15 +166,15 @@ void cleanup_mapper()
     if (dev) {
         printf("Freeing mapper device-> ");
         fflush(stdout);
-        mdev_free(dev);
+        mapper_device_free(dev);
         printf("ok\n");
     }
 }
 
 void wait_local_devices()
 {
-	while (!(mdev_ready(dev)))
-			mdev_poll(dev, 100);
+	while (!(mapper_device_ready(dev)))
+			mapper_device_poll(dev, 100);
 }
 
 void ctrlc(int sig)
@@ -183,13 +190,13 @@ int main()
     signal(SIGINT, ctrlc);
 	
 	// Set the global sample rate before creating class instances.
-	Stk::setSampleRate( 44100.0 );
-	Stk::showWarnings( true );
-	Stk::setRawwavePath( RAWWAVE_PATH );
+	Stk::setSampleRate(44100.0);
+	Stk::showWarnings(true);
+	Stk::setRawwavePath(RAWWAVE_PATH);
 
 	int nFrames = (int)(2.5/1000*44100.0); // 5 ms
 	RtWvOut *dac = 0;
-	StkFrames frames( nFrames, 2 );
+	StkFrames frames(nFrames, 2);
 
     if (setup_mapper()) {
         printf("Error initializing libmapper device\n");
@@ -199,8 +206,8 @@ int main()
 
   	try {
         // Define and open the default realtime output device for one-channel playback
-        dac = new RtWvOut( 2 );
-        for (int i=0; i<NUMVOICES; i++)
+        dac = new RtWvOut(2);
+        for (int i = 0; i < NUMVOICES; i++)
             voices[i] = new BeeThree();
     }
  	catch ( StkError & ) {
@@ -211,21 +218,22 @@ int main()
 
 	printf("-------------------- GO ! --------------------\n");
 	while (!done) {
-        mdev_poll(dev, 0);
+        if (mapper_device_poll(dev, 0))
+            print_active_instances();
 
         try {
-            for (int i=0; i<nFrames; i++) {
+            for (int i = 0; i < nFrames; i++) {
                 float out = 0;
-                for (int j=0; j<NUMVOICES; j++)
+                for (int j = 0; j < NUMVOICES; j++)
                     out += voices[j]->tick(0);
                 out /= NUMVOICES;
                 if (out > 1) out = 1;
                 if (out < -1) out = -1;
                 frames(i, 1) = frames(i, 0) = out;
             }
-            dac->tick( frames );
+            dac->tick(frames);
         }
-        catch ( StkError & ) {
+        catch (StkError &) {
             goto cleanup;
         }
     }

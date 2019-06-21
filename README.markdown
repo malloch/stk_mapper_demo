@@ -11,6 +11,10 @@ To build, you will first need to install [libmapper][1] and [liblo][3] from thei
 Joseph Malloch 2013
 [Input Devices and Music Interaction Laboratory][4], McGill University.
 
+## Changelog: 20170901
+
+* Updated to libmapper v1.0
+
 [1]: http://github.com/libmapper/libmapper
 [2]: https://ccrma.stanford.edu/software/stk/
 [3]: http://github.com/radarsat1/liblo
