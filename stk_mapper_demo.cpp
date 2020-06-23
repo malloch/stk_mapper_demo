@@ -9,7 +9,7 @@
 #include <arpa/inet.h>
 
 extern "C" {
-#include <mapper/mapper.h>
+#include <mpr/mpr.h>
 }
 
 #define NUMVOICES 16
@@ -18,8 +18,8 @@ using namespace stk;
 
 BeeThree *voices[NUMVOICES];
 int active[NUMVOICES];
-mapper_device dev;
-mapper_signal freq, gain, fbgain, lfo_speed, lfo_depth;
+mpr_dev dev;
+mpr_sig freq, gain, fbgain, lfo_speed, lfo_depth;
 int done = 0;
 
 void print_active_instances()
@@ -39,142 +39,146 @@ void print_active_instances()
     printf("\n");
 }
 
-void release_instance(mapper_id instance, mapper_timetag_t *tt)
+void release_instance(mpr_id instance, mpr_time time)
 {
     voices[instance]->noteOff(1);
-    mapper_signal_instance_release(freq, instance, *tt);
-    mapper_signal_instance_release(gain, instance, *tt);
-    mapper_signal_instance_release(fbgain, instance, *tt);
-    mapper_signal_instance_release(lfo_speed, instance, *tt);
-    mapper_signal_instance_release(lfo_depth, instance, *tt);
+    mpr_sig_release_inst(freq, instance, time);
+    mpr_sig_release_inst(gain, instance, time);
+    mpr_sig_release_inst(fbgain, instance, time);
+    mpr_sig_release_inst(lfo_speed, instance, time);
+    mpr_sig_release_inst(lfo_depth, instance, time);
     active[instance] = 0;
 }
 
-void freq_handler(mapper_signal sig, mapper_id instance, const void *value,
-                  int count, mapper_timetag_t *tt)
+void freq_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
+                  mpr_type type, const void *val, mpr_time time)
 {
-	if (value) {
-        StkFloat f = *((float *)value);
-        // need to check if voice is already active
-        if (active[instance] == 0) {
-            voices[instance]->noteOn(f, 1);
-            active[instance] = 1;
-            print_active_instances();
+    switch (evt) {
+        case MPR_SIG_UPDATE: {
+            StkFloat f = *((float *)val);
+            // need to check if voice is already active
+            if (active[inst] == 0) {
+                voices[inst]->noteOn(f, 1);
+                active[inst] = 1;
+                print_active_instances();
+            }
+            else {
+                // can we perform polyphonic pitch-bend? use multiple channels?
+            }
+            break;
         }
-        else {
-            // can we perform polyphonic pitch-bend? use multiple channels?
-        }
-    }
-    else {
-        release_instance(instance, tt);
+        case MPR_SIG_REL_UPSTRM:
+            release_instance(inst, time);
+            break;
+        default:
+            break;
     }
 }
 
-void feedback_gain_handler(mapper_signal sig, mapper_id instance,
-                           const void *value, int count, mapper_timetag_t *tt)
+void feedback_gain_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
+                           mpr_type type, const void *val, mpr_time time)
 {
-    if (value) {
-        StkFloat f = *((float *)value);
-        voices[instance]->controlChange(2, f);
+    if (MPR_SIG_UPDATE == evt) {
+        StkFloat f = *((float *)val);
+        voices[inst]->controlChange(2, f);
     }
-    else {
+    else if (MPR_SIG_REL_UPSTRM == evt) {
         // release note also?
-        release_instance(instance, tt);
+        release_instance(inst, time);
     }
 }
 
-void gain_handler(mapper_signal sig, mapper_id instance, const void *value,
-                  int count, mapper_timetag_t *tt)
+void gain_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
+                  mpr_type type, const void *val, mpr_time time)
 {
-    if (value) {
-        StkFloat f = *((float *)value);
-        voices[instance]->controlChange(4, f);
+    if (MPR_SIG_UPDATE == evt) {
+        StkFloat f = *((float *)val);
+        voices[inst]->controlChange(4, f);
     }
-    else {
-        release_instance(instance, tt);
+    else if (MPR_SIG_REL_UPSTRM == evt) {
+        release_instance(inst, time);
     }
 }
 
-void LFO_speed_handler(mapper_signal sig, mapper_id instance, const void *value,
-                       int count, mapper_timetag_t *tt)
+void LFO_speed_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
+                       mpr_type type, const void *val, mpr_time time)
 {
-    if (value) {
-        StkFloat f = *((float *)value);
-        voices[instance]->controlChange(11, f);
+    if (MPR_SIG_UPDATE == evt) {
+        StkFloat f = *((float *)val);
+        voices[inst]->controlChange(11, f);
     }
-    else {
-        release_instance(instance, tt);
+    else if (MPR_SIG_REL_UPSTRM == evt) {
+        release_instance(inst, time);
     }
 }
 
-void LFO_depth_handler(mapper_signal sig, mapper_id instance, const void *value,
-                       int count, mapper_timetag_t *tt)
+void LFO_depth_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
+                       mpr_type type, const void *val, mpr_time time)
 {
-    if (value) {
-        StkFloat f = *((float *)value);
-        voices[instance]->controlChange(1, f);
+    if (MPR_SIG_UPDATE == evt) {
+        StkFloat f = *((float *)val);
+        voices[inst]->controlChange(1, f);
     }
-    else {
-        release_instance(instance, tt);
+    else if (MPR_SIG_REL_UPSTRM == evt) {
+        release_instance(inst, time);
     }
 }
 
 
-/*! Creation of the mapper device*/
-int setup_mapper()
+/*! Creation of the device */
+int setup()
 {
-    mapper_signal sig;
+    mpr_sig sig;
     float mn = 0.0;
     float mx = 20000.0;
+    int inst = NUMVOICES, stl = MPR_STEAL_OLDEST;
+    int evts = MPR_SIG_UPDATE | MPR_SIG_REL_UPSTRM;
 
-    dev = mapper_device_new("BeeThree", 0, 0);
+    dev = mpr_dev_new("BeeThree", 0);
     if (!dev) goto error;
     printf("BeeThree device created.\n");
 
-    freq = mapper_device_add_signal(dev, MAPPER_DIR_INCOMING, NUMVOICES,
-                                    "/frequency", 1, 'f', "Hz",
-                                    &mn, &mx, freq_handler, voices);
-    mapper_signal_set_instance_stealing_mode(freq, MAPPER_STEAL_OLDEST);
+    freq = mpr_sig_new(dev, MPR_DIR_IN, "frequency", 1, MPR_FLT, "Hz",
+                       &mn, &mx, &inst, freq_handler, evts);
+    mpr_obj_set_prop(freq, MPR_PROP_DATA, NULL, 1, MPR_PTR, voices, 0);
+    mpr_obj_set_prop(freq, MPR_PROP_STEAL_MODE, NULL, 1, MPR_INT32, &stl, 1);
 
     mx = 1.0;
-    fbgain = mapper_device_add_signal(dev, MAPPER_DIR_INCOMING, NUMVOICES,
-                                      "/feedback_gain", 1, 'f', 0,
-                                      &mn, &mx, feedback_gain_handler, voices);
+    fbgain = mpr_sig_new(dev, MPR_DIR_IN, "feedback_gain", 1, MPR_FLT, 0,
+                         &mn, &mx, &inst, feedback_gain_handler, evts);
+    mpr_obj_set_prop(fbgain, MPR_PROP_DATA, NULL, 1, MPR_PTR, voices, 0);
 
-    gain = mapper_device_add_signal(dev, MAPPER_DIR_INCOMING, NUMVOICES,
-                                    "/gain", 1, 'f', 0,
-                                    &mn, &mx, gain_handler, voices);
+    gain = mpr_sig_new(dev, MPR_DIR_IN, "gain", 1, MPR_FLT, 0,
+                       &mn, &mx, &inst, gain_handler, evts);
+    mpr_obj_set_prop(gain, MPR_PROP_DATA, NULL, 1, MPR_PTR, voices, 0);
 
-    lfo_speed = mapper_device_add_signal(dev, MAPPER_DIR_INCOMING, NUMVOICES,
-                                         "/LFO/speed", 1, 'f', "Hz",
-                                         &mn, 0, LFO_speed_handler, voices);
+    lfo_speed = mpr_sig_new(dev, MPR_DIR_IN, "LFO/speed", 1, MPR_FLT, "Hz",
+                            &mn, 0, &inst, LFO_speed_handler, evts);
+    mpr_obj_set_prop(lfo_speed, MPR_PROP_DATA, NULL, 1, MPR_PTR, voices, 0);
 
-    lfo_depth = mapper_device_add_signal(dev, MAPPER_DIR_INCOMING, NUMVOICES,
-                                         "/LFO/depth", 1, 'f', 0,
-                                         &mn, &mx, LFO_depth_handler, voices);
-
-    printf("Number of inputs: %d\n",
-           mapper_device_num_signals(dev, MAPPER_DIR_INCOMING));
+    lfo_depth = mpr_sig_new(dev, MPR_DIR_IN, "LFO/depth", 1, 'f', 0,
+                            &mn, &mx, &inst, LFO_depth_handler, evts);
+    mpr_obj_set_prop(lfo_depth, MPR_PROP_DATA, NULL, 1, MPR_PTR, voices, 0);
     return 0;
 
   error:
     return 1;
 }
 
-void cleanup_mapper()
+void cleanup()
 {
     if (dev) {
-        printf("Freeing mapper device-> ");
+        printf("Freeing device-> ");
         fflush(stdout);
-        mapper_device_free(dev);
+        mpr_dev_free(dev);
         printf("ok\n");
     }
 }
 
 void wait_local_devices()
 {
-	while (!(mapper_device_ready(dev)))
-			mapper_device_poll(dev, 100);
+	while (!(mpr_dev_get_is_ready(dev)))
+			mpr_dev_poll(dev, 100);
 }
 
 void ctrlc(int sig)
@@ -198,8 +202,8 @@ int main()
 	RtWvOut *dac = 0;
 	StkFrames frames(nFrames, 2);
 
-    if (setup_mapper()) {
-        printf("Error initializing libmapper device\n");
+    if (setup()) {
+        printf("Error initializing device\n");
         result = 1;
         goto cleanup;
     }
@@ -218,7 +222,7 @@ int main()
 
 	printf("-------------------- GO ! --------------------\n");
 	while (!done) {
-        if (mapper_device_poll(dev, 0))
+        if (mpr_dev_poll(dev, 0))
             print_active_instances();
 
         try {
@@ -239,7 +243,7 @@ int main()
     }
 
 cleanup:
-    cleanup_mapper();
+    cleanup();
   	delete dac;
   	return result;
 }
