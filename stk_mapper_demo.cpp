@@ -39,14 +39,14 @@ void print_active_instances()
     printf("\n");
 }
 
-void release_instance(mpr_id instance, mpr_time time)
+void release_instance(mpr_id instance)
 {
     voices[instance]->noteOff(1);
-    mpr_sig_release_inst(freq, instance, time);
-    mpr_sig_release_inst(gain, instance, time);
-    mpr_sig_release_inst(fbgain, instance, time);
-    mpr_sig_release_inst(lfo_speed, instance, time);
-    mpr_sig_release_inst(lfo_depth, instance, time);
+    mpr_sig_release_inst(freq, instance);
+    mpr_sig_release_inst(gain, instance);
+    mpr_sig_release_inst(fbgain, instance);
+    mpr_sig_release_inst(lfo_speed, instance);
+    mpr_sig_release_inst(lfo_depth, instance);
     active[instance] = 0;
 }
 
@@ -64,11 +64,12 @@ void freq_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
             }
             else {
                 // can we perform polyphonic pitch-bend? use multiple channels?
+                voices[inst]->setFrequency(f);
             }
             break;
         }
         case MPR_SIG_REL_UPSTRM:
-            release_instance(inst, time);
+            release_instance(inst);
             break;
         default:
             break;
@@ -84,7 +85,7 @@ void feedback_gain_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
     }
     else if (MPR_SIG_REL_UPSTRM == evt) {
         // release note also?
-        release_instance(inst, time);
+        release_instance(inst);
     }
 }
 
@@ -96,7 +97,7 @@ void gain_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
         voices[inst]->controlChange(4, f);
     }
     else if (MPR_SIG_REL_UPSTRM == evt) {
-        release_instance(inst, time);
+        release_instance(inst);
     }
 }
 
@@ -108,7 +109,7 @@ void LFO_speed_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
         voices[inst]->controlChange(11, f);
     }
     else if (MPR_SIG_REL_UPSTRM == evt) {
-        release_instance(inst, time);
+        release_instance(inst);
     }
 }
 
@@ -120,7 +121,7 @@ void LFO_depth_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
         voices[inst]->controlChange(1, f);
     }
     else if (MPR_SIG_REL_UPSTRM == evt) {
-        release_instance(inst, time);
+        release_instance(inst);
     }
 }
 
