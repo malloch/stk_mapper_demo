@@ -9,7 +9,7 @@
 #include <arpa/inet.h>
 
 extern "C" {
-#include <mpr/mpr.h>
+#include <mapper/mapper.h>
 }
 
 #define NUMVOICES 16
@@ -25,16 +25,48 @@ int done = 0;
 void print_active_instances()
 {
     int i;
+    float *val;
 
     // clear screen & cursor to home
     printf("\e[2J\e[0;0H");
 
-    printf("INSTANCES:");
+    printf("INSTANCES: ");
     for (i=0; i<NUMVOICES; i++)
-        printf("%4i", i);
-    printf("\nSTATUS:   ");
+        printf("%6i", i);
+    printf("\nFREQUENCY: ");
     for (i=0; i<NUMVOICES; i++) {
-        printf("   %c", active[i] ? 'X' : ' ');
+        if (active[i] && (val = (float*)mpr_sig_get_value(freq, i, NULL)))
+            printf("%6i", (int)*val);
+        else
+            printf("     ");
+    }
+    printf("\nGAIN:      ");
+    for (i=0; i<NUMVOICES; i++) {
+        if (active[i] && (val = (float*)mpr_sig_get_value(gain, i, NULL)))
+            printf("%6i", (int)*val);
+        else
+            printf("     ");
+    }
+    printf("\nFEEDBACK:  ");
+    for (i=0; i<NUMVOICES; i++) {
+        if (active[i] && (val = (float*)mpr_sig_get_value(fbgain, i, NULL)))
+            printf("%6i", (int)*val);
+        else
+            printf("     ");
+    }
+    printf("\nLFO SPEED: ");
+    for (i=0; i<NUMVOICES; i++) {
+        if (active[i] && (val = (float*)mpr_sig_get_value(lfo_speed, i, NULL)))
+            printf("%6i", (int)*val);
+        else
+            printf("     ");
+    }
+    printf("\nLFO DEPTH: ");
+    for (i=0; i<NUMVOICES; i++) {
+        if (active[i] && (val = (float*)mpr_sig_get_value(lfo_depth, i, NULL)))
+            printf("%6i", (int)*val);
+        else
+            printf("     ");
     }
     printf("\n");
 }
@@ -63,7 +95,6 @@ void freq_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
                 print_active_instances();
             }
             else {
-                // can we perform polyphonic pitch-bend? use multiple channels?
                 voices[inst]->setFrequency(f);
             }
             break;
@@ -95,6 +126,7 @@ void gain_handler(mpr_sig sig, mpr_sig_evt evt, mpr_id inst, int len,
     if (MPR_SIG_UPDATE == evt) {
         StkFloat f = *((float *)val);
         voices[inst]->controlChange(4, f);
+//        voices[inst]->setControl1(f);
     }
     else if (MPR_SIG_REL_UPSTRM == evt) {
         release_instance(inst);
@@ -144,7 +176,7 @@ int setup()
     mpr_obj_set_prop(freq, MPR_PROP_DATA, NULL, 1, MPR_PTR, voices, 0);
     mpr_obj_set_prop(freq, MPR_PROP_STEAL_MODE, NULL, 1, MPR_INT32, &stl, 1);
 
-    mx = 1.0;
+    mx = 128.0;
     fbgain = mpr_sig_new(dev, MPR_DIR_IN, "feedback_gain", 1, MPR_FLT, 0,
                          &mn, &mx, &inst, feedback_gain_handler, evts);
     mpr_obj_set_prop(fbgain, MPR_PROP_DATA, NULL, 1, MPR_PTR, voices, 0);
@@ -157,7 +189,7 @@ int setup()
                             &mn, 0, &inst, LFO_speed_handler, evts);
     mpr_obj_set_prop(lfo_speed, MPR_PROP_DATA, NULL, 1, MPR_PTR, voices, 0);
 
-    lfo_depth = mpr_sig_new(dev, MPR_DIR_IN, "LFO/depth", 1, 'f', 0,
+    lfo_depth = mpr_sig_new(dev, MPR_DIR_IN, "LFO/depth", 1, MPR_FLT, 0,
                             &mn, &mx, &inst, LFO_depth_handler, evts);
     mpr_obj_set_prop(lfo_depth, MPR_PROP_DATA, NULL, 1, MPR_PTR, voices, 0);
     return 0;
