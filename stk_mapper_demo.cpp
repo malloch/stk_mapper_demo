@@ -210,8 +210,8 @@ void cleanup()
 
 void wait_local_devices()
 {
-	while (!(mpr_dev_get_is_ready(dev)))
-			mpr_dev_poll(dev, 100);
+    while (!(mpr_dev_get_is_ready(dev)))
+            mpr_dev_poll(dev, 100);
 }
 
 void ctrlc(int sig)
@@ -221,19 +221,19 @@ void ctrlc(int sig)
 
 int main()
 {
-	int result=0;
+    int result=0;
     float maxval = -100000;
 
     signal(SIGINT, ctrlc);
-	
-	// Set the global sample rate before creating class instances.
-	Stk::setSampleRate(44100.0);
-	Stk::showWarnings(true);
-	Stk::setRawwavePath(RAWWAVE_PATH);
 
-	int nFrames = (int)(2.5/1000*44100.0); // 5 ms
-	RtWvOut *dac = 0;
-	StkFrames frames(nFrames, 2);
+    // Set the global sample rate before creating class instances.
+    Stk::setSampleRate(44100.0);
+    Stk::showWarnings(true);
+    Stk::setRawwavePath(RAWWAVE_PATH);
+
+    int nFrames = (int)(2.5/1000*44100.0); // 5 ms
+    RtWvOut *dac = 0;
+    StkFrames frames(nFrames, 2);
 
     if (setup()) {
         printf("Error initializing device\n");
@@ -241,20 +241,20 @@ int main()
         goto cleanup;
     }
 
-  	try {
+    try {
         // Define and open the default realtime output device for one-channel playback
         dac = new RtWvOut(2);
         for (int i = 0; i < NUMVOICES; i++)
             voices[i] = new BeeThree();
     }
- 	catch ( StkError & ) {
+    catch ( StkError & ) {
         goto cleanup;
     }
 
-	wait_local_devices();
+    wait_local_devices();
 
-	printf("-------------------- GO ! --------------------\n");
-	while (!done) {
+    printf("-------------------- GO ! --------------------\n");
+    while (!done) {
         if (mpr_dev_poll(dev, 0))
             print_active_instances();
 
@@ -277,6 +277,6 @@ int main()
 
 cleanup:
     cleanup();
-  	delete dac;
-  	return result;
+    delete dac;
+    return result;
 }
